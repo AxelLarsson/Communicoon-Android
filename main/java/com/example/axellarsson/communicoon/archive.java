@@ -1,5 +1,10 @@
 package com.example.axellarsson.communicoon;
 
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.StrictMode;
 import android.support.annotation.NonNull;
@@ -9,98 +14,161 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
+import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.android.volley.AuthFailureError;
+import com.android.volley.Request;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;
+import com.squareup.picasso.Picasso;
+
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import android.app.Activity;
+import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class archive extends Fragment {
 
-    String urladress="http://communicoon.com/app/GET/test.php";
-    String[] name;
-    String[] image;
-    ListView listView;
-    BufferedInputStream is;
-    String line = null;
-    String result = null;
+    public ListView reportList;
 
+    public static List status = new ArrayList<String>();
+    public static List classification = new ArrayList<String>();
+    public static List image = new ArrayList<String>();
+    public static List disclosed = new ArrayList<String>();
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.archive, container, false);
 
-        listView=(ListView)view.findViewById(R.id.archiveListView);
-
-        StrictMode.setThreadPolicy((new StrictMode.ThreadPolicy.Builder().permitNetwork().build()));
-        collectData();
-        customListView CustomListView = new customListView( getActivity(), this.name, this.image);
-        listView.setAdapter(CustomListView);
 
 
+        reportList = (ListView) view.findViewById( R.id.report_list );
+
+        getReports();
 
         return view;
     }
-    private void collectData()
-    {
-        try
-        {
-            URL url = new URL(urladress);
-            HttpURLConnection con = (HttpURLConnection)url.openConnection();
-            con.setRequestMethod("GET");
-            is = new BufferedInputStream(con.getInputStream());
 
-        }
-        catch (Exception ex)
-        {
-            ex.printStackTrace();
-        }
 
-        try
-        {
-            BufferedReader br = new BufferedReader(new InputStreamReader(is));
-            StringBuilder sb = new StringBuilder();
 
-            while ((line=br.readLine())!=null);
-            {
-                sb.append(line+"\n");
+
+    public void getReports(){
+        StringRequest request = new StringRequest( Request.Method.POST, "http://communicoon.com/app/get/contributions.php",
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+                        try {
+                            JSONArray reports = new JSONArray( response );
+                            for (int i=0; i<reports.length();i++)
+                            {
+                                JSONObject r = reports.getJSONObject( i );
+                                status.add(r.getString( "status" ));
+                                classification.add(r.getString( "classification" ));
+                                image.add(r.getString( "image" ));
+                                disclosed.add(r.getString( "disclosed" ));
+                            }
+
+
+                            ReportAdapter reportAdapter = new ReportAdapter();
+                            reportList.setAdapter( reportAdapter );
+
+                            //TODO: add a click listener for the itens in the list
+
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
             }
-            is.close();
-            result=sb.toString();
+        }){
+            @Override
+            protected Map<String, String> getParams() throws AuthFailureError {
 
-        }
-        catch (Exception ex)
-        {
-            ex.printStackTrace();
-        }
-
-        try
-        {
-            JSONArray ja = new JSONArray(result);
-            JSONObject jo = null;
-            name = new String[ja.length()];
-            image = new String[ja.length()];
-
-            for (int i=0;i<=ja.length();i++)
-            {
-                jo=ja.getJSONObject(i);
-                name[i] = jo.getString("name");
-                image[i] = jo.getString("image");
-
+                SharedPreferences session = getActivity().getSharedPreferences( "CoonSession", Context.MODE_PRIVATE );
+                Map<String,String> params = new HashMap<>(  );
+                params.put( "coonId", session.getInt( "ID", 0 ) + "");
+                return params;
             }
-        }
-        catch (Exception ex)
-        {
-            ex.printStackTrace();
-        }
+        };
+        Volley.newRequestQueue( getActivity() ).add( request );
 
     }
+    class ReportAdapter extends BaseAdapter{
+        @Override
+        public int getCount() {
+            return status.size();
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return null;
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return 0;
+        }
+
+        @Override
+        public View getView(int position, View view, ViewGroup viewGroup) {
+            view = getLayoutInflater().inflate( R.layout.report_item, null);
+
+            TextView statusView = (TextView) view.findViewById( R.id.status );
+            TextView classificationView = (TextView) view.findViewById( R.id.classification );
+            ImageView imageView = (ImageView) view.findViewById( R.id.image );
+            TextView disclosedView = (TextView) view.findViewById( R.id.disclosed );
+
+            String status_ = status.get( position ).toString();
+            String image_ = image.get( position ).toString();
+            String classification_ = classification.get( position ).toString();
+            String disclosed_ = disclosed.get( position ).toString();
+
+
+            if(status_ == "null"){
+                statusView.setText( "Pending" );
+                statusView.setTextColor( Color.rgb( 79, 93, 115 ));
+            }
+            else{
+                if(status_.equals("In progress")){
+                    statusView.setTextColor( Color.rgb( 255, 209, 102 ) );
+                }
+                else {
+                    statusView.setTextColor( Color.rgb( 118, 194, 175 ) );
+                }
+
+                statusView.setText( status_ );
+            }
+
+            classificationView.setText( classification_ );
+            if(image_ != "null"){
+                Picasso.get().load("http://communicoon.com/uploads/" + image.get( position ).toString()).into( imageView );
+            }
+            disclosedView.setText( disclosed_ );
+
+            return view;
+        }
     }
+}
+
 
